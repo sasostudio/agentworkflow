@@ -1,0 +1,38 @@
+{
+  "target": "C:/work/my-roblox-game",
+  "check_commands": [
+    "powershell -NoProfile -ExecutionPolicy Bypass -File check.ps1"
+  ],
+  "qa": {
+    "runner": "roblox",
+    "environment": "external",
+    "scenario_timeout_sec": 120,
+    "roblox": {
+      "studio_name": "MyPlace",
+      "sync_check": true,
+      "play_ready_timeout_sec": 30,
+      "unit_test_code": "return require(game:GetService(\"ServerStorage\").UnitTest.RunUnitTest)(nil, 5)",
+      "reset_code": "-- 테스트 키 정리(예: aw_test_ 로 시작하는 DataStore 키 삭제)\nreturn nil"
+    }
+  },
+  "plan_dir": "docs/plan",
+  "wiki_dir": "docs/wiki",
+  "doc_extensions": [
+    ".md",
+    ".txt"
+  ],
+  "high_risk_paths": [
+    "default.project.json"
+  ],
+  "limits": {
+    "max_check_fails": 3,
+    "max_calls_per_run": 60,
+    "max_eval_rejects": 3
+  },
+  "capabilities": {
+    "web_roles": [],
+    "mcp_servers": [],
+    "mcp_tools": {},
+    "plugins": []
+  }
+}

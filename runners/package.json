@@ -1,0 +1,9 @@
+{
+  "name": "agentworkflow-runners",
+  "private": true,
+  "type": "module",
+  "description": "QA runners for the agentworkflow engine (web = playwright-core + system Chrome)",
+  "dependencies": {
+    "playwright-core": "1.63.0"
+  }
+}

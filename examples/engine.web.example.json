@@ -1,0 +1,40 @@
+{
+  "target": "C:/work/my-web-app",
+  "check_commands": [
+    "npm run build"
+  ],
+  "qa": {
+    "runner": "web",
+    "environment": "managed",
+    "managed": {
+      "start": "npm run dev -- --port 5199 --strictPort",
+      "ready_url": "http://localhost:5199/",
+      "ready_timeout_sec": 90
+    },
+    "scenario_timeout_sec": 120
+  },
+  "plan_dir": "docs/plan",
+  "wiki_dir": "docs/wiki",
+  "doc_extensions": [
+    ".md",
+    ".txt"
+  ],
+  "high_risk_paths": [
+    "firestore.rules",
+    "database.rules.json",
+    "functions/",
+    "src/payment/"
+  ],
+  "limits": {
+    "max_check_fails": 3,
+    "max_calls_per_run": 60,
+    "max_cost_usd_per_run": null,
+    "max_eval_rejects": 3
+  },
+  "capabilities": {
+    "web_roles": [],
+    "mcp_servers": [],
+    "mcp_tools": {},
+    "plugins": []
+  }
+}

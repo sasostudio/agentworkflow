@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>엔진 대시보드</title><link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230d1424'/><path d='M4 17h6l3-7 5 13 3-6h7' fill='none' stroke='%2322c55e' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<!-- 엔진_대시보드_설계서 §3 · 스타일 B(컨트롤룸) — 효과는 시안 .testtmp/dash_mock/live.html 에서 가져옴.
+     읽기 전용: 버튼은 보기·이동뿐(엔진을 멈추거나 승인하는 버튼 없음). 데이터 = /api/* (2초마다) · 토큰 0.
+     PC 모드(127.0.0.1 · dashboard.py) / 클라우드 모드(그 밖 · Vercel · Supabase 로그인 — 설계서 §10). 데이터 출처만 다르고 그리기는 같다.
+     어디를 보나: 패널마다 draw 함수 1개 — drawStatus · drawKpis · drawNow · drawFlow · drawGantt · drawEvals · drawLog · drawRuns · drawCampaign -->
+<style>
+:root{--bg:#070b16;--panel:#0d1424;--fg:#e2e8f0;--dim:#64748b;--line:#1e293b;--idle:#111a2e;--idleS:#24324d;--done:#0f2a4a;--doneS:#38bdf8;
+ --act:#7c2d12;--actS:#fb923c;--wait:#3f2d07;--waitS:#facc15;--bad:#f43f5e;--ok:#22c55e;--edge:#334155;--pause:#a78bfa;--run:#94a3b8}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;font-size:14px}
+main{max-width:1280px;margin:0 auto;padding:12px 16px 40px}
+a{color:var(--doneS)}
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+h1{font-size:17px;margin:0;letter-spacing:.5px}
+h2{font-size:13px;margin:0 0 8px;color:var(--dim);font-weight:700;letter-spacing:.5px}
+select,button,label.chk{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:5px 9px;font-family:inherit;font-size:13px}
+select{max-width:min(560px,100%)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:12px;min-width:0}
+.row{display:flex;gap:12px;flex-wrap:wrap}.row>.panel{flex:1;min-width:300px}
+.note{font-size:12px;color:var(--dim)}
+.mono{font-family:Consolas,'D2Coding',monospace;font-size:12.5px}
+.chip{display:inline-block;border-radius:6px;padding:1px 7px;font-size:12px;border:1px solid var(--line);margin:1px 2px;white-space:nowrap}
+.c-ok{background:#0f2a4a;border-color:var(--doneS);color:#bae6fd}.c-bad{background:#3b0a16;border-color:var(--bad);color:#fecdd3}
+.c-wait{background:#3f2d07;border-color:var(--waitS);color:#fef08a}.c-run{background:#1e293b;border-color:var(--run);color:#cbd5e1}
+.c-pause{background:#2e1065;border-color:var(--pause);color:#ddd6fe}.c-pass{background:#052e16;border-color:var(--ok);color:#bbf7d0}
+/* ① status */
+.status{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px}
+.dot{width:13px;height:13px;border-radius:50%;background:var(--dim)}
+.dot.live{background:var(--ok);animation:beat 1.6s infinite}
+.dot.s-wait{background:var(--waitS);animation:waitp 1.4s infinite}.dot.s-bad{background:var(--bad)}.dot.s-pause{background:var(--pause)}.dot.s-done{background:var(--doneS)}
+@keyframes beat{0%{box-shadow:0 0 0 0 rgba(34,197,94,.6)}70%{box-shadow:0 0 0 10px rgba(34,197,94,0)}100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}}
+@keyframes waitp{50%{opacity:.45}}
+.ecg{width:110px;height:24px;display:none}.ecg.on{display:block}.ecg path{fill:none;stroke:var(--ok);stroke-width:2;stroke-dasharray:240;animation:ecg 1.6s linear infinite}
+@keyframes ecg{from{stroke-dashoffset:240}to{stroke-dashoffset:0}}
+.ubar{display:inline-block;width:110px;height:8px;border-radius:4px;background:var(--line);overflow:hidden;vertical-align:middle;margin:0 4px}
+.ubar i{display:block;height:100%;background:var(--doneS);transition:width .8s}
+.ubar i.hi{background:var(--waitS)}.ubar i.max{background:var(--bad)}
+.todo{margin-top:10px;border-radius:10px;padding:9px 12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;display:none}
+.todo.on{display:block}
+.todo.t-wait{background:#3f2d07;border:1px solid var(--waitS)}.todo.t-bad{background:#3b0a16;border:1px solid var(--bad)}.todo.t-pause{background:#2e1065;border:1px solid var(--pause)}
+/* ② kpi */
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px;margin-top:10px}
+.kpi{border:1px solid var(--line);border-radius:10px;padding:7px 10px;min-width:0}
+.kpi b{display:block;font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kpi span{font-size:12px;color:var(--dim)}
+.kpi.warn b{color:var(--waitS)}.kpi.bad b{color:var(--bad)}
+.bar{height:7px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:5px}.bar i{display:block;height:100%;background:var(--doneS);transition:width .8s ease;box-shadow:0 0 8px var(--doneS)}
+/* ③ now */
+.card{border:1px solid var(--line);border-radius:10px;padding:9px 12px;line-height:1.7;margin-top:6px}
+.card .who{font-weight:700}
+.tool{animation:in .35s}@keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.tool.err{color:#fda4af}.tool.open::after{content:' ●';color:var(--actS);animation:waitp 1s infinite}
+.typing{color:var(--dim)}.typing::after{content:'●';margin-left:6px;color:var(--actS);animation:waitp 1s infinite}
+.est{display:inline-block;width:140px;height:7px;border-radius:4px;background:var(--line);overflow:hidden;vertical-align:middle;margin-left:6px}.est i{display:block;height:100%;background:var(--actS)}
+/* ④ flow (from the mock: neon breathing · comets · marching edges · particles · scan sweep) */
+svg text{fill:var(--fg);font-family:'Malgun Gothic',sans-serif}
+.node .box{fill:var(--idle);stroke:var(--idleS);stroke-width:1.5;transition:fill .4s,stroke .4s}
+.node .t1{font-weight:700;font-size:14px}.node .t2{font-size:12px;fill:var(--dim)}
+.node .ring{fill:none;stroke:none}
+.node.done .box{fill:var(--done);stroke:var(--doneS);filter:drop-shadow(0 0 4px #38bdf8)}.node.done .t2{fill:var(--fg)}
+.node.wait .box{fill:var(--wait);stroke:var(--waitS);stroke-width:3}.node.wait{animation:waitp 1.4s ease-in-out infinite}
+.node.stop .box{fill:#3b0a16;stroke:var(--bad);stroke-width:3}
+.node.pause .box{fill:#2e1065;stroke:var(--pause);stroke-width:3}
+.node.complete .box{fill:#052e16;stroke:var(--ok);stroke-width:3}
+.node.flashbad .box{animation:fb .9s ease}@keyframes fb{30%{fill:var(--bad);stroke:var(--bad)}}
+.node.active .box{fill:var(--act);stroke:var(--actS);stroke-width:3}.node.active .t1,.node.active .t2{fill:#fff}
+.node.active{animation:neon 1.6s ease-in-out infinite}
+.node.active .ring{stroke:#fde68a;stroke-width:3;stroke-dasharray:40 240;animation:comet 1.4s linear infinite}
+@keyframes neon{0%,100%{filter:drop-shadow(0 0 4px #fb923c)}50%{filter:drop-shadow(0 0 18px #fb923c) drop-shadow(0 0 30px #f97316)}}
+@keyframes comet{from{stroke-dashoffset:0}to{stroke-dashoffset:-560}}
+.node.held .box{fill:var(--act);stroke:var(--actS);stroke-width:2;opacity:.6}
+.edge{fill:none;stroke:var(--edge);stroke-width:2}
+.edge.used{stroke:var(--doneS);stroke-dasharray:8 6;animation:ants .8s linear infinite}
+.edge.back{stroke:var(--bad);stroke-dasharray:6 5;opacity:.45}.edge.back.used{opacity:1}
+.edge.live{stroke:var(--actS);stroke-width:3;stroke-dasharray:8 6;animation:ants .8s linear infinite}
+@keyframes ants{to{stroke-dashoffset:-14}}
+.trace{fill:none;stroke-width:5;stroke-linecap:round;opacity:.9}
+.particle{fill:#fde68a;filter:drop-shadow(0 0 6px #facc15)}
+.elabel{font-size:12px;fill:var(--dim)}.elabel.bad{fill:var(--bad)}
+.inner{fill:none;stroke:var(--line);stroke-dasharray:4 4}
+.scan{fill:url(#scan);animation:sweep 3s linear infinite}.scan.off{display:none}
+@keyframes sweep{from{transform:translateX(-200px)}to{transform:translateX(1250px)}}
+.node{transform-box:fill-box;transform-origin:center}
+/* ⑤ gantt */
+#gantt{width:100%;display:block}
+.gbar{cursor:pointer}.gbar:hover{filter:brightness(1.4)}
+.gbar.running{animation:waitp 1.2s infinite}
+.lane{font-size:12px;fill:var(--dim)}.gtick{font-size:11px;fill:var(--dim)}.gline{stroke:var(--line);stroke-width:1}
+.legend span{margin-right:10px}
+/* ⑥ evals */
+table{border-collapse:collapse;width:100%}
+td,th{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top;font-size:12.5px}
+th{color:var(--dim);font-weight:600}
+.scroll{overflow:auto;max-height:420px}
+.cell{cursor:pointer}
+#detail{margin-top:8px;display:none}#detail.on{display:block}
+#detail img{max-width:100%;max-height:340px;border-radius:8px;border:1px solid var(--line);display:block;margin-top:6px}
+/* ⑦ log */
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+label.chk{display:inline-flex;gap:4px;align-items:center;padding:3px 7px;cursor:pointer;font-size:12px}
+.log{max-height:420px;overflow:auto;font-size:12.5px}
+.log div{padding:3px 0;border-bottom:1px solid var(--line);white-space:pre-wrap;word-break:break-word}
+.log .t{color:var(--dim);margin-right:6px}
+.log .call{color:#bae6fd}.log .verdict{color:#fef08a}.log .reject{color:#fda4af}.log .stop{color:#ddd6fe}.log .retry{color:#fdba74}.log .stage{color:#86efac;font-weight:700}
+/* ⑧ runs */
+#runs tr{cursor:pointer}#runs tr.sel{background:#13203a}
+.feats{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px;margin-top:6px}
+.feat{border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feat.done{border-color:var(--doneS)}.feat.me{border-color:var(--actS);box-shadow:0 0 6px var(--actS)}
+.err{color:var(--bad)}
+/* cloud: login */
+.login{position:fixed;inset:0;background:rgba(7,11,22,.96);display:flex;align-items:center;justify-content:center;z-index:9}
+.login[hidden]{display:none}
+.login form{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;width:min(340px,92vw);display:grid;gap:10px}
+.login input{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;font-family:inherit}
+#logout[hidden]{display:none}
+@media (max-width:700px){.kpi b{font-size:16px}.ubar{width:70px}}
+</style></head><body><main>
+
+<div class="top">
+ <h1>⚙ 엔진 대시보드</h1>
+ <span class="note" id="follow"></span><span id="liveChips"></span>
+ <button id="pastBtn" title="지난 run 목록을 펼친다 — 고르면 그 run을 계속 보여 준다(「지금 run으로」로 복귀)">지난 run 보기</button>
+ <select id="runSel" aria-label="run 선택" hidden></select>
+ <span class="note" id="upd">불러오는 중…</span>
+ <button id="reload" title="캐시를 비우고 지금 다시 가져오기(로그인·선택한 run은 그대로)">↻ 새로고침</button>
+ <button id="logout" hidden>로그아웃</button>
+</div>
+<div class="login" id="login" hidden><form id="loginForm">
+ <b>⚙ 엔진 대시보드 — 로그인</b><span class="note">관리자 계정만 run 기록을 볼 수 있습니다.</span>
+ <input id="lEmail" type="email" autocomplete="username" placeholder="이메일" required>
+ <input id="lPw" type="password" autocomplete="current-password" placeholder="비밀번호" required>
+ <button type="submit">로그인</button><span class="note err" id="loginMsg"></span>
+</form></div>
+
+<!-- ① 상태 바 -->
+<div class="panel" id="p-status">
+ <div class="top">
+  <div class="status"><span class="dot" id="dot"></span><span id="st">-</span></div>
+  <svg class="ecg" id="ecg" viewBox="0 0 120 26"><path d="M0,13 L30,13 L36,4 L42,22 L48,13 L120,13"/></svg>
+  <span class="note" id="stLine"></span>
+  <span class="note" style="margin-left:auto" id="usage"></span>
+ </div>
+ <div class="todo" id="todo"></div>
+ <!-- ② 진행 요약 -->
+ <div class="kpis" id="kpis"></div>
+</div>
+
+<!-- ③ 지금 도는 호출 -->
+<div class="panel"><h2>③ 지금 도는 호출</h2><div id="now"></div></div>
+
+<!-- ④ 흐름 그래프 -->
+<div class="panel"><h2>④ 흐름 — <span id="flowNote"></span></h2>
+<svg id="g" viewBox="0 0 1200 330" width="100%">
+ <defs>
+  <marker id="ar" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#64748b"/></marker>
+  <linearGradient id="scan" x1="0" x2="1"><stop offset="0" stop-color="#38bdf8" stop-opacity="0"/><stop offset=".5" stop-color="#38bdf8" stop-opacity=".12"/><stop offset="1" stop-color="#38bdf8" stop-opacity="0"/></linearGradient>
+ </defs>
+ <rect class="scan off" id="scanR" x="0" y="0" width="180" height="330"/>
+ <g id="edges"></g><g id="nodes"></g><g id="fx"></g>
+ <rect class="inner" x="20" y="150" width="1160" height="165" rx="12"/>
+ <text id="innerTitle" x="36" y="172" class="elabel"></text>
+</svg>
+</div>
+
+<!-- ⑤ 호출 타임라인 -->
+<div class="panel"><h2>⑤ 호출 타임라인 <span class="note" id="ganttNote"></span></h2>
+ <svg id="gantt" viewBox="0 0 1200 200"></svg>
+ <div class="note legend"><span class="chip c-ok">통과·작업</span><span class="chip c-bad">반려·실패·끊김</span><span class="chip c-wait">UNSURE·판단 필요</span><span class="chip c-run">RUN·진행 중</span> 마우스 = 모델·effort·토큰·캐시·비용·소요 · 클릭 = raw 원문</div>
+</div>
+
+<div class="row">
+ <!-- ⑥ 평가 · 시나리오 -->
+ <div class="panel"><h2>⑥ 평가 · 시나리오</h2>
+  <div id="evHist"></div>
+  <div class="scroll" style="margin-top:10px"><table id="grid"></table></div>
+  <div class="card" id="detail"></div>
+ </div>
+ <!-- ⑦ 이벤트 로그 -->
+ <div class="panel"><h2>⑦ 이벤트 로그 (timeline.md · 최신이 위)</h2>
+  <div class="filters" id="filters"></div>
+  <div class="log" id="log"></div>
+ </div>
+</div>
+
+<!-- ⑧ run 목록 · 캠페인 -->
+<div class="row">
+ <div class="panel" id="p-runs" hidden><h2>⑧ 지난 run</h2><div class="scroll"><table id="runs"></table></div></div>
+ <div class="panel" id="p-camp"><h2>캠페인</h2><div id="camp" class="note">이 run은 캠페인 run이 아님</div></div>
+</div>
+<p class="note" id="foot">읽기 전용 · 이 PC(127.0.0.1)에서만 · AI 호출 없음(토큰 0). 「추정」 표시 외의 값은 모두 엔진 기록 그대로. 효과: SVG+CSS+JS만(인터넷 불필요).</p>
+</main>
+<script>
+'use strict';
+const NS='http://www.w3.org/2000/svg';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pct=x=>x==null?'-':Math.round(x*100)+'%';
+function dur(s){if(s==null)return '-';s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;
+ return h?`${h}시간 ${m}분`:m?`${m}분 ${String(x).padStart(2,'0')}초`:`${x}초`}
+function hhmm(ep){const d=new Date(ep*1000);return d.toTimeString().slice(0,5)}
+function hhmmss(ep){const d=new Date(ep*1000);return d.toTimeString().slice(0,8)}
+const store={get(k,d){try{const v=localStorage.getItem('awdash.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+ set(k,v){try{localStorage.setItem('awdash.'+k,JSON.stringify(v))}catch(e){}}};
+const ROLE={builder:'작업자','evaluator':'주 평가자','evaluator:second':'2번째 관점','evaluator:devil':'반박 검토',runner:'러너'};
+const ICON={builder:'🟥','evaluator':'🟧','evaluator:second':'🟧','evaluator:devil':'🟧',runner:'🟩'};
+const STATUS_KO={RUNNING:'RUNNING',AWAITING_APPROVAL:'끝 승인 대기',AWAITING_ANSWER:'방향 질문 대기',HELP:'HELP — Master 필요',PAUSED_USAGE:'사용량 일시중지',COMPLETE:'COMPLETE'};
+function statusClass(s){if(!s)return '';if(s.stalled||s.status==='HELP')return 'bad';if(s.status==='PAUSED_USAGE')return 'pause';
+ if(s.status==='AWAITING_APPROVAL'||s.status==='AWAITING_ANSWER')return 'wait';if(s.status==='COMPLETE')return 'done';if(s.status==='RUNNING')return 'live';return ''}
+function verdictClass(v,err){if(err)return 'c-bad';return {READY:'c-ok',PASSED:'c-pass',REJECT:'c-bad',FAILED:'c-bad',BLOCKED:'c-bad',UNSURE:'c-wait',RUN:'c-run',PENDING:'c-run'}[v]||'c-ok'}
+const BARCOL={'c-ok':'#38bdf8','c-pass':'#22c55e','c-bad':'#f43f5e','c-wait':'#facc15','c-run':'#94a3b8'};
+const fileUrl=(path)=>`/api/file?run=${encodeURIComponent(RUN)}&path=${encodeURIComponent(path)}`;
+// ---- data source: PC (dashboard.py /api) or cloud (Supabase · 설계서 §10) — drawing never knows which ----
+const CLOUD=!/^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+let SB=null,FILES={},CACHE={id:null,at:null,d:null};
+const SIGNED={};  // a signed URL lives 600 s — reused for 500 s instead of asking again
+async function signed(path){const k=FILES[path];if(!k)throw new Error('클라우드에 아직 없는 파일: '+path);
+ const hit=SIGNED[k];if(hit&&hit.exp>Date.now())return hit.url;
+ const {data,error}=await SB.storage.from('aw-files').createSignedUrl(k,600);if(error)throw new Error(error.message);
+ SIGNED[k]={url:data.signedUrl,exp:Date.now()+500e3};return data.signedUrl}
+function openFile(path){if(!CLOUD){window.open(fileUrl(path),'_blank');return}
+ const w=window.open('','_blank');signed(path).then(u=>{w.location=u}).catch(e=>{w.close();alert(e.message)})}
+const fileA=path=>CLOUD?`href="#" data-file="${esc(path)}"`:`href="${fileUrl(path)}" target="_blank"`;
+const imgSrc=path=>CLOUD?`data-img="${esc(path)}"`:`src="${fileUrl(path)}"`;
+function hydrateImgs(root){if(!CLOUD)return;root.querySelectorAll('img[data-img]').forEach(im=>{const p=im.dataset.img;im.removeAttribute('data-img');
+ signed(p).then(u=>{im.src=u}).catch(()=>{im.alt='캡처가 클라우드에 없음'})})}
+document.addEventListener('click',e=>{const a=e.target.closest('[data-file]');if(!a)return;e.preventDefault();openFile(a.dataset.file)});
+async function cloudInit(){const cfg=await getJSON('config.json');const {createClient}=await import('https://esm.sh/@supabase/supabase-js@2');
+ SB=createClient(cfg.url,cfg.key);const {data}=await SB.auth.getSession();
+ $('foot').textContent='읽기 전용 · 클라우드(로그인한 관리자만) · PC 업로더가 올린 기록 · AI 호출 없음(토큰 0)';
+ if(!data.session){$('login').hidden=false;return false}$('logout').hidden=false;return true}
+$('loginForm').onsubmit=async e=>{e.preventDefault();$('loginMsg').textContent='';
+ const {error}=await SB.auth.signInWithPassword({email:$('lEmail').value.trim(),password:$('lPw').value});
+ if(error){$('loginMsg').textContent='로그인 실패: '+error.message;return}$('login').hidden=true;$('logout').hidden=false;start()};
+$('logout').onclick=async()=>{await SB.auth.signOut();location.reload()};
+async function cloudRuns(){const {data,error}=await SB.from('aw_runs').select('id,created,status,stage,calls,cost,campaign,feature,hb_epoch,updated_at').neq('id','__usage__').order('created',{ascending:false}).limit(80);
+ if(error)throw new Error(error.message);const now=Date.now()/1000;
+ return data.map(r=>({...r,cost:+r.cost||0,alive:r.status==='RUNNING'&&r.hb_epoch!=null&&now-r.hb_epoch<120}))}
+async function cloudRun(id){const q=await SB.from('aw_runs').select('updated_at').eq('id',id).maybeSingle();
+ if(q.error)throw new Error(q.error.message);if(!q.data)throw new Error('클라우드에 없는 run(7일 지나 삭제됐을 수 있음)');
+ if(CACHE.id!==id||CACHE.at!==q.data.updated_at){const f=await SB.from('aw_runs').select('payload,updated_at').eq('id',id).single();
+  if(f.error)throw new Error(f.error.message);CACHE={id,at:f.data.updated_at,d:f.data.payload}}
+ const d=structuredClone(CACHE.d);FILES=d.files||{};shiftNow(d);return d}
+// the upload is a few seconds old: move what depends on "now" to this moment (the server's numbers, just later)
+function shiftNow(d){const dt=Date.now()/1000-d.now;if(!(dt>0))return;d.now+=dt;const s=d.status;if(s.hb_age!=null)s.hb_age+=dt;
+ if(s.status!=='RUNNING')return;if(d.progress.elapsed!=null)d.progress.elapsed+=dt;
+ if(!s.stalled&&(s.hb_age==null||s.hb_age>120)){s.stalled=true;s.todo='heartbeat '+(s.hb_age==null?'기록 없음':Math.round(s.hb_age)+'초 없음')+' — 엔진 프로세스가 죽었을 수 있음 · Master: status 확인 뒤 resume'}
+ if(s.stalled){d.now_calls.calls=[];d.now_calls.alive=false;d.flow.alive=false;d.calls.bars=d.calls.bars.filter(b=>!b.running);return}
+ for(const c of d.now_calls.calls){if(c.elapsed!=null){c.elapsed+=dt;if(c.typical)c.estimate=c.elapsed/c.typical}}
+ d.calls.now+=dt;for(const b of d.calls.bars)if(b.running){b.t1+=dt;b.sec+=dt}}
+async function cloudUsage(){const {data,error}=await SB.from('aw_runs').select('payload').eq('id','__usage__').maybeSingle();
+ if(error)throw new Error(error.message);return data?data.payload:null}
+const SRC={usage:()=>CLOUD?cloudUsage():getJSON('/api/usage'),runs:()=>CLOUD?cloudRuns():getJSON('/api/runs'),run:id=>CLOUD?cloudRun(id):getJSON('/api/run?id='+encodeURIComponent(id))};
+
+// ================= ① status =================
+// ① account usage — one value for the whole engine (dashboard.account_usage · not the selected run). Judged again on
+// every refresh: its age, and a window whose reset passed shows 「리셋됨」 (no reset time recorded -> older than 5h/7d).
+const WIN=[['u5h','r5h','5시간',5*3600],['u7d','r7d','7일',7*86400]];
+const ub=(x)=>{const w=Math.round((x||0)*100);return `<span class="ubar"><i class="${w>=95?'max':w>=80?'hi':''}" style="width:${w}%"></i></span>`};
+function drawUsage(u){const el=$('usage');
+ if(!u){el.textContent='사용량 판독 없음 — 엔진 호출 때만 읽힘';return}
+ const now=Date.now()/1000,age=Math.max(0,now-u.t);let reset=false,noTime=false;
+ const parts=WIN.map(([k,r,lab,len])=>{if(u[k]==null)return `${lab} -`;const gone=u[r]?u[r]<now:age>len;
+  if(!u[r])noTime=true;if(gone){reset=true;return `${lab} <b>리셋됨</b>`}return `${lab} ${ub(u[k])}<b>${pct(u[k])}</b>`});
+ el.innerHTML=parts.join(' · ')+` <span title="계정 사용량은 엔진이 Claude를 호출할 때만 함께 온다 — 대시보드는 Claude를 부르지 않는다(토큰 0)">(${dur(age)} 전 판독${reset?' · 다음 엔진 호출 때 갱신':''}${noTime&&!reset?' · 리셋 시각 기록 없음':''})</span>`}
+function drawStatus(d){
+ const s=d.status,cls=statusClass(s);
+ $('dot').className='dot'+(cls==='live'?' live':cls?' s-'+cls:'');
+ $('st').textContent=s.stalled?'멈춤 의심 (RUNNING 기록 · heartbeat 없음)':(STATUS_KO[s.status]||s.status||'-');
+ $('ecg').classList.toggle('on',cls==='live');
+ const hb=s.hb_age==null?'heartbeat 없음':`♥ ${dur(s.hb_age)} 전`;
+ $('stLine').textContent=`${d.id.split('/')[1]} · ${s.stage||'-'}${s.eval_no?` (평가 ${s.eval_no}회차)`:''} · ${hb}${s.branch?' · '+s.branch:''}${s.run_level?' · L'+s.run_level:''}`;
+ const box=$('todo');const parts=[];
+ if(s.todo)parts.push('⚠ '+s.todo);
+ if(s.question)parts.push('질문: '+s.question);
+ if(s.unsure)parts.push('평가자 불확실: '+s.unsure);
+ if(s.reason&&s.status!=='RUNNING'&&!(s.question&&s.reason.includes(s.question)))parts.push('사유: '+s.reason);
+ box.className='todo'+(parts.length?' on t-'+(cls==='pause'?'pause':cls==='bad'?'bad':'wait'):'');
+ box.textContent=parts.join('\n');
+}
+// ================= ② KPIs =================
+// work rate = the step's position (p.rate) + how far the step itself has got (p.fill · dashboard.rate_fill): target
+// files changed · scenarios ended (facts) or the running call's estimate from ③ (moves every refresh). Never reaches
+// the next position. An upload from before 10-09 has no fill -> the position alone, as before.
+function liveRate(d){const p=d.progress,f=p.fill,s=d.status||{};
+ if(!f||s.stalled||s.status!=='RUNNING')return {v:p.rate,note:''};  // stalled (cloud shiftNow): the old fill is stale
+ let x=null,note;
+ if(f.kind==='estimate'){const c=(d.now_calls.calls||[]).find(c=>c.key===f.key&&c.kind===f.call_kind);x=c?c.estimate:null;
+  note=x==null?'평소 소요 기록 없음':'호출 경과 기준 추정'}
+ else{x=f.total?f.done/f.total:null;note=f.kind==='files'?`대상 파일 ${f.done}/${f.total} 수정`:`시나리오 ${f.done}/${f.total} 끝남`}
+ if(x==null)return {v:p.rate,note};
+ return {v:Math.round((p.rate+(f.next-p.rate)*Math.min(.95,Math.max(0,x)))*10)/10,note}}
+function drawKpis(d){
+ const p=d.progress,k=[];
+ const tile=(lab,val,extra='',cls='')=>`<div class="kpi ${cls}"><span>${esc(lab)}</span><b title="${esc(val)}">${esc(val)}</b>${extra}</div>`;
+ const lr=liveRate(d);
+ k.push(tile('작업률',lr.v+'%',`<div class="bar"><i style="width:${lr.v}%"></i></div>${lr.note?`<span class="note" style="font-size:11px">${esc(lr.note)}</span>`:''}`));
+ k.push(tile('항목',`${p.items.checked}/${p.items.total}${p.items.total&&p.items.checked===p.items.total?' ✓':''}`));
+ k.push(tile('평가 회차',p.eval_no?p.eval_no+'회차'+(p.eval_phase?' · '+p.eval_phase:''):'-'));
+ k.push(tile('평가 반려 / 상한',`${p.rejects.n}/${p.rejects.cap}`,'',p.rejects.n>=p.rejects.cap?'bad':p.rejects.n?'warn':''));
+ k.push(tile('RUN / 상한(이번 평가)',`${p.runs.n}/${p.runs.cap}`,'',p.runs.n>=p.runs.cap?'warn':''));
+ k.push(tile('호출 / 상한',`${p.calls.n}/${p.calls.cap}`,`<div class="bar"><i style="width:${Math.min(100,p.calls.n/p.calls.cap*100)}%"></i></div>`,p.calls.n/p.calls.cap>=.8?'warn':''));
+ k.push(tile('비용',`$${(p.cost.usd||0).toFixed(2)}${p.cost.unknown?` +미상 ${p.cost.unknown}`:''}${p.cost.cap!=null?` / $${p.cost.cap}`:''}`));
+ k.push(tile('자동반려(이 단계)',`${p.self_fix.n}/${p.self_fix.cap}`,'',p.self_fix.n?'warn':''));
+ const rt=Object.entries(p.retries||{});if(rt.length)k.push(tile('재시도',rt.map(([a,b])=>a+' '+b).join(' · '),'','warn'));
+ k.push(tile('경과',dur(p.elapsed)));
+ $('kpis').innerHTML=k.join('');
+}
+// ================= ③ now =================
+function drawNow(d){
+ const n=d.now_calls,out=[];
+ for(const c of n.calls){
+  const est=c.estimate==null?'<span class="note">이 종류의 끝난 호출이 아직 없음 — 추정 불가</span>':
+   `<span class="note">평소 이 종류 중앙값${c.typical_src==='recent'?'(지난 run)':''} ${dur(c.typical)} </span><span class="est"><i style="width:${Math.min(100,c.estimate*100)}%"></i></span> <span class="note">${Math.round(c.estimate*100)}% (추정)${c.estimate>1?' · 평소보다 김':''}</span>`;
+  const tools=(c.tools||[]).map((t,i,a)=>`<div class="tool mono ${t.error?'err':''} ${!t.done&&i===a.length-1?'open':''}">› ${esc(t.t)} ${esc(t.name)} ${esc(t.target)}${t.error?' ✗':''}</div>`).join('');
+  const last=(c.tools||[]).slice(-1)[0];
+  const writing=(!last||last.done)?`<div class="typing note">${last?'도구 결과를 받고 생각·작성 중':'작성 중'} · 이 구간은 내용이 기록되지 않음</div>`:'';
+  out.push(`<div class="card"><span class="who">${ICON[c.key]||'⬜'} ${esc(ROLE[c.key]||c.key)}</span> <span class="mono">${esc(c.key)}</span> · ${esc(c.kind)}<br>
+   <span class="mono">${esc(c.model||'모델 기록 없음')} · effort ${esc(c.effort||'-')} · ${c.resumed?'이어쓰기':'새 세션'}</span><br>
+   시작 ${esc(c.since||'-')} · 경과 <b>${dur(c.elapsed)}</b> ${est}${tools?'<div style="margin-top:4px">'+tools+'</div>':''}${writing}</div>`)}
+ if(n.runner){const r=n.runner;out.push(`<div class="card"><span class="who">🟩 러너(코드 · AI 아님)</span> ${esc(r.attempt)} · 시나리오 ${r.done}/${r.total} 끝남
+   ${r.last.map(x=>`<span class="chip ${verdictClass(x.status)}">${esc(x.id)} ${esc(x.status)}</span>`).join('')}</div>`)}
+ if(!out.length){const s=d.status;
+  out.push(`<div class="note">${n.alive?'지금 도는 AI 호출 없음 — 엔진 코드가 처리 중(끝 검사·기계검사·단계 이동 등)':
+   s.status==='RUNNING'?'heartbeat가 끊겨 지금 상태를 알 수 없음':'엔진이 멈춰 있음 — ① 상태 바 참고'}</div>`)}
+ $('now').innerHTML=out.join('');
+}
+// ================= ④ flow graph (fixed layout · the mock's effects driven by data) =================
+const TOP={PLAN:[20,40,150,60,'PLANNING','항목 → TODO'],BUILD:[250,40,170,60,'BUILD','작업자'],EVAL:[530,35,200,70,'EVALUATE','평가'],
+ GATE:[820,40,150,60,'끝 승인','Master'],DONE:[1040,40,140,60,'COMPLETE','']};
+const INNER={
+ BUILD:{W:[60,200,170,64,'작업자 호출','구현·고치기'],CHK:[330,200,170,64,'끝 검사','대상 밖·기계검사'],WIKI:[600,200,170,64,'wiki 갱신','같은 세션']},
+ EVAL:{M:[40,200,170,64,'주 평가자','판정'],R:[280,200,150,64,'러너','시나리오'],S:[500,200,150,64,'2번째 관점','보안·데이터'],
+       D:[720,200,150,64,'반박 검토','새 세션'],A:[950,200,170,64,'통과','끝 승인으로']}};
+const INNER_IN={W:null,CHK:'iWC',WIKI:'iCW',M:null,R:'iMR',S:'iMS',D:'iSD',A:'iDA'};
+function rectNode(id,[x,y,w,h,t1,t2],layer){
+ const g=document.createElementNS(NS,'g');g.setAttribute('class','node');g.id='n-'+id;
+ const r=document.createElementNS(NS,'rect');Object.entries({x,y,width:w,height:h,rx:10,class:'box'}).forEach(([k,v])=>r.setAttribute(k,v));
+ const ring=document.createElementNS(NS,'rect');Object.entries({x:x+1,y:y+1,width:w-2,height:h-2,rx:9,class:'ring',pathLength:560}).forEach(([k,v])=>ring.setAttribute(k,v));
+ const a=document.createElementNS(NS,'text');Object.entries({x:x+w/2,y:y+h/2-2,'text-anchor':'middle',class:'t1'}).forEach(([k,v])=>a.setAttribute(k,v));a.textContent=t1;
+ const b=document.createElementNS(NS,'text');Object.entries({x:x+w/2,y:y+h/2+16,'text-anchor':'middle',class:'t2'}).forEach(([k,v])=>b.setAttribute(k,v));b.textContent=t2;
+ g.append(r,ring,a,b);layer.append(g);g._t2=b;g._def=t2;return g}
+function edge(layer,id,d,cls='',label='',lx=0,ly=0,lcls=''){
+ const p=document.createElementNS(NS,'path');p.setAttribute('d',d);p.setAttribute('class','edge '+cls);p.id='e-'+id;p.setAttribute('marker-end','url(#ar)');p._base='edge '+cls;layer.append(p);
+ if(label){const t=document.createElementNS(NS,'text');Object.entries({x:lx,y:ly,'text-anchor':'middle',class:'elabel '+lcls,id:'l-'+id}).forEach(([k,v])=>t.setAttribute(k,v));t.textContent=label;layer.append(t)}}
+edge($('edges'),'PB','M170,70 L248,70');edge($('edges'),'BE','M420,58 L528,58','','×0',474,50);
+edge($('edges'),'EB','M530,92 L422,92','back','반려 ×0',476,112,'bad');edge($('edges'),'EG','M730,70 L818,70');edge($('edges'),'GD','M970,70 L1038,70');
+for(const [k,v] of Object.entries(TOP))rectNode(k,v,$('nodes'));
+const innerG=document.createElementNS(NS,'g');$('nodes').append(innerG);const innerE=document.createElementNS(NS,'g');$('edges').append(innerE);
+let innerKind=null;
+function buildInner(kind){
+ if(innerKind===kind)return;innerKind=kind;innerG.innerHTML='';innerE.innerHTML='';
+ for(const [k,v] of Object.entries(INNER[kind]))rectNode('i'+k,v,innerG);
+ if(kind==='BUILD'){edge(innerE,'iWC','M230,232 L328,232');edge(innerE,'iCW','M500,232 L598,232')}
+ else{edge(innerE,'iMR','M210,224 L278,224','','RUN',244,216);edge(innerE,'iRM','M280,244 L212,244','','결과',246,262);
+  edge(innerE,'iMS','M210,214 C300,170 420,170 500,214','','READY',360,180);edge(innerE,'iSD','M650,232 L718,232');
+  edge(innerE,'iDA','M870,232 L948,232');edge(innerE,'iDM','M720,262 C600,315 260,315 140,266','back','지적 → 주 평가자',430,312,'bad')}
+}
+function setNode(id,state,t2){const n=$('n-'+id);if(!n)return;n.classList.remove('active','done','wait','complete','stop','pause','held');
+ if(state)n.classList.add(state);n._t2.textContent=t2==null?n._def:t2}
+function trace(pathId,color){const p=$('e-'+pathId);if(!p||!p.getTotalLength)return;const L=p.getTotalLength();const t=document.createElementNS(NS,'path');
+ t.setAttribute('d',p.getAttribute('d'));t.setAttribute('class','trace');t.setAttribute('stroke',color);t.style.strokeDasharray=L;t.style.strokeDashoffset=L;$('fx').append(t);
+ t.animate([{strokeDashoffset:L},{strokeDashoffset:0,opacity:.9},{strokeDashoffset:0,opacity:0}],{duration:1400,easing:'ease-out'}).onfinish=()=>t.remove()}
+function flashBad(id){const n=$('n-'+id);if(!n)return;n.classList.add('flashbad');setTimeout(()=>n.classList.remove('flashbad'),900)}
+let liveKey='';
+function particles(ids){const key=ids.join(',');if(key===liveKey)return;liveKey=key;
+ document.querySelectorAll('#fx circle').forEach(c=>c.remove());document.querySelectorAll('.edge.live').forEach(e=>e.classList.remove('live'));
+ for(const id of ids){const p=$('e-'+id);if(!p)continue;p.classList.add('live');
+  for(let i=0;i<3;i++){const c=document.createElementNS(NS,'circle');c.setAttribute('r',4.5);c.setAttribute('class','particle');
+   const m=document.createElementNS(NS,'animateMotion');m.setAttribute('dur','1.6s');m.setAttribute('repeatCount','indefinite');m.setAttribute('begin',(i*0.53)+'s');
+   const mp=document.createElementNS(NS,'mpath');mp.setAttributeNS('http://www.w3.org/1999/xlink','href','#e-'+id);mp.setAttribute('href','#e-'+id);m.append(mp);c.append(m);$('fx').append(c)}}}
+let prevFlow=null;
+function drawFlow(d){
+ const f=d.flow,s=d.status,running=f.alive;
+ const stopCls=s.stalled||s.status==='HELP'?'stop':s.status==='PAUSED_USAGE'?'pause':(s.status==='AWAITING_ANSWER'||s.status==='AWAITING_APPROVAL')?'wait':null;
+ const lab={BUILD:`작업자 · 항목 ${d.progress.items.checked}/${d.progress.items.total}`,EVAL:f.inner.eval_no?`평가 ${f.inner.eval_no}회차`:'평가',
+  GATE:s.status==='AWAITING_APPROVAL'?'Master 확인 대기':(f.top.GATE==='done'?'approve':'Master'),DONE:f.top.DONE?'✓':''};
+ for(const k of Object.keys(TOP)){let st=f.top[k];
+  if(k===f.current_top&&st!=='complete'){st=stopCls||(running?'active':'held')}
+  setNode(k,st,lab[k])}
+ document.querySelectorAll('#edges > .edge').forEach(e=>e.setAttribute('class',e._base));
+ for(const [id,n] of Object.entries(f.edges))if(n){const e=$('e-'+id);e&&e.classList.add('used')}
+ const be=$('l-BE');be&&(be.textContent='×'+f.edges.BE);const eb=$('l-EB');eb&&(eb.textContent='반려 ×'+f.edges.EB);
+ buildInner(f.inner.kind);
+ $('innerTitle').textContent=f.inner.kind==='EVAL'?`EVALUATE 안 — ${f.inner.eval_no?'평가 '+f.inner.eval_no+'회차':''}`:'BUILD 안 — 작업자';
+ for(const k of Object.keys(INNER[f.inner.kind])){let st=f.inner.done.includes(k)?'done':null;
+  if(k==='A'&&f.inner.labels.A)st='complete';
+  if(k===f.inner.current&&k!=='A')st=stopCls||(running?'active':'held');
+  setNode('i'+k,st,f.inner.labels[k]??undefined)}
+ const live=[];
+ if(running){if(f.current_top==='BUILD')live.push(f.came_back?'EB':'PB');if(f.current_top==='EVAL')live.push('BE');
+  const ie=INNER_IN[f.inner.current];if(ie)live.push(ie)}
+ particles(live);
+ $('scanR').classList.toggle('off',!running);
+ if(prevFlow&&prevFlow.id===d.id){
+  const pair=prevFlow.cur+'>'+f.current_top,map={'PLAN>BUILD':['PB','#38bdf8'],'BUILD>EVAL':['BE','#fb923c'],'EVAL>BUILD':['EB','#f43f5e'],'EVAL>GATE':['EG','#38bdf8'],'GATE>DONE':['GD','#22c55e'],'GATE>BUILD':['EB','#f43f5e']};
+  if(map[pair])trace(...map[pair]);
+  if(f.edges.EB>prevFlow.eb)flashBad('EVAL');
+  if(prevFlow.inner!==f.inner.current&&INNER_IN[f.inner.current])trace(INNER_IN[f.inner.current],'#38bdf8')}
+ prevFlow={id:d.id,cur:f.current_top,eb:f.edges.EB,inner:f.inner.current};
+ $('flowNote').textContent=(s.flow_note||'')+(d.source==='timeline'?' · 옛 run(events.jsonl 없음 — timeline에서 읽음)':'');
+}
+// ================= ⑤ gantt =================
+function drawGantt(d){
+ const bars=d.calls.bars,svg=$('gantt');svg.innerHTML='';
+ const base=['builder','evaluator','evaluator:second','evaluator:devil','runner'];
+ const lanes=base.filter(k=>bars.some(b=>b.key===k));for(const b of bars)if(!lanes.includes(b.key))lanes.push(b.key);
+ if(!bars.length){svg.setAttribute('viewBox','0 0 1200 40');svg.innerHTML='<text x="10" y="24" class="lane">호출 기록 없음</text>';$('ganttNote').textContent='';return}
+ const t0=Math.min(...bars.map(b=>b.t0??b.t1).filter(x=>x!=null),d.calls.t_start??Infinity);
+ const t1=Math.max(...bars.map(b=>b.t1??b.t0).filter(x=>x!=null));
+ const L=120,W=1200-L-10,LH=26,H=lanes.length*LH+28,span=Math.max(1,t1-t0);
+ svg.setAttribute('viewBox',`0 0 1200 ${H}`);
+ const X=t=>L+(t-t0)/span*W;
+ const add=(tag,attrs,text)=>{const e=document.createElementNS(NS,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,v);if(text!=null)e.textContent=text;svg.append(e);return e};
+ const step=[60,300,600,900,1800,3600,7200,14400].find(s=>span/s<=8)||28800;
+ for(let t=Math.ceil(t0/step)*step;t<=t1;t+=step){add('line',{x1:X(t),x2:X(t),y1:0,y2:H-20,class:'gline'});add('text',{x:X(t),y:H-6,'text-anchor':'middle',class:'gtick'},hhmm(t))}
+ lanes.forEach((k,i)=>{add('text',{x:4,y:i*LH+17,class:'lane'},ROLE[k]||k);add('line',{x1:L,x2:1190,y1:i*LH+LH,y2:i*LH+LH,class:'gline'})});
+ for(const b of bars){const i=lanes.indexOf(b.key);const a=b.t0??b.t1,z=b.t1??b.t0;if(a==null)continue;
+  const vc=b.running?'c-run':b.key==='runner'?(b.verdict==='PASSED'?'c-pass':b.verdict?'c-bad':'c-run'):verdictClass(b.verdict,b.error||b.cut);
+  const x=X(a),w=Math.max(3,X(z)-x);
+  const r=add('rect',{x,y:i*LH+5,width:w,height:LH-10,rx:3,fill:BARCOL[vc],class:'gbar'+(b.running?' running':'')});
+  const tok=b.tokens?`\n토큰 입력 ${b.tokens.in} · 캐시 읽기 ${b.tokens.cache_read} · 캐시 생성 ${b.tokens.cache_write} · 출력 ${b.tokens.out}`:'';
+  const tip=b.key==='runner'?`러너 ${b.kind} · ${b.verdict||'실행 중'} · 시나리오 ${b.n} (실패 ${b.failed})\n${hhmmss(a)}~${hhmmss(z)} · ${dur(b.sec)}`:
+   `${ROLE[b.key]||b.key} · ${b.kind}${b.verdict?' → '+b.verdict:''}${b.running?' (진행 중)':''}\n${b.model||'-'}${b.model_set&&b.model&&b.model!==b.model_set?' ⚠설정 '+b.model_set:''} · effort ${b.effort||'-'}${b.resumed==null?'':b.resumed?' · 이어쓰기':' · 새 세션'}\n${hhmmss(a)}~${hhmmss(z)} · ${b.sec==null?'소요 기록 없음':dur(b.sec)}${b.cost!=null?` · $${b.cost.toFixed(4)}`:''}${b.cache_hit!=null?` · 캐시 적중 ${pct(b.cache_hit)}`:''}${tok}${b.u5h!=null?`\n사용량 5h ${pct(b.u5h)} · 7d ${pct(b.u7d)}`:''}${b.error?'\n⚠ 오류 응답':''}${b.cut?'\n⚠ 끊김 '+b.cut:''}${b.raw?'\n클릭 = raw 원문':''}`;
+  add('title',{},tip);r.append(svg.lastChild);
+  if(b.raw)r.addEventListener('click',()=>openFile(b.raw));
+  else if(b.key==='runner')r.addEventListener('click',()=>openFile(`03-evaluate/${b.kind}/results_final.json`))}
+ $('ganttNote').textContent=`${hhmm(t0)} ~ ${hhmm(t1)} · AI 호출 ${bars.filter(b=>b.key!=='runner'&&!b.running).length}건`+(d.source==='timeline'?' · timeline에서 읽음(토큰 정보 없음)':'');
+}
+// ================= ⑥ evaluations · scenarios =================
+let selCell=null;
+function drawEvals(d){
+ const e=d.evals;
+ $('evHist').innerHTML=e.history.length?'<table><tr><th>회차</th><th>판정 이력 (클릭 = 판정 원문)</th></tr>'+e.history.map(h=>`<tr><td>${esc(h.eval_no)}</td><td>${h.steps.map(s=>
+  s.file?`<a class="chip ${verdictClass(s.verdict)}" ${fileA(s.file)} title="r${esc(s.round)}">${esc(s.phase)} ${esc(s.verdict)}</a>`:`<span class="chip ${verdictClass(s.verdict)}">${esc(s.phase)} ${esc(s.verdict)}</span>`).join('')}</td></tr>`).join('')+'</table>'
+  +(e.approvals.length?'<div class="note" style="margin-top:6px">'+e.approvals.map(a=>`${esc(a.t)} Master ${esc(a.decision)}(${esc(a.gate)}) — ${esc((a.note||'').slice(0,160))}`).join('<br>')+'</div>':'')
+  :'<span class="note">판정 기록 없음</span>';
+ if(!e.attempts.length){$('grid').innerHTML='<tr><td class="note">시나리오 실행 기록 없음</td></tr>';return}
+ const sym={PASSED:'✓',FAILED:'✗',BLOCKED:'⛔'};
+ let html='<tr><th>시나리오</th>'+e.attempts.map(a=>`<th title="${esc(a.verdict||'실행 중')}">${esc(a.name)}${a.running?' …':''}</th>`).join('')+'</tr>';
+ for(const r of e.rows){html+=`<tr><td title="${esc(r.title)}"><b>${esc(r.id)}</b> <span class="note">${esc(r.kind)}</span></td>`+e.attempts.map(a=>{const c=r.cells[a.name];
+  return c?`<td><span class="chip cell ${verdictClass(c.status)}" data-r="${esc(r.id)}" data-a="${esc(a.name)}" title="${esc(c.note)}">${sym[c.status]||esc(c.status)}${c.evidence.length?' 📷':''}${c.env?' ENV':''}</span></td>`:'<td></td>'}).join('')+'</tr>'}
+ $('grid').innerHTML=html;
+ $('grid').querySelectorAll('.cell').forEach(x=>x.onclick=()=>{selCell=[x.dataset.r,x.dataset.a];showCell(d)});
+ if(selCell)showCell(d);
+}
+// drawn again only when what it shows changed — a redraw every refresh made the capture blink
+let cellSig='';
+function showCell(d){const r=d.evals.rows.find(x=>x.id===selCell[0]);const c=r&&r.cells[selCell[1]];const box=$('detail');
+ if(!c){box.className='card';cellSig='';return}
+ const sig=JSON.stringify([RUN,selCell,c]);if(sig===cellSig)return;cellSig=sig;
+ box.className='card on';box.innerHTML=`<b>${esc(r.id)}</b> · ${esc(selCell[1])} · <span class="chip ${verdictClass(c.status)}">${esc(c.status)}</span><div class="note">${esc(r.title)}</div><div>${esc(c.note)}</div>`+
+  (c.log?`<a ${fileA(c.log)}>실행 로그</a> `:'')+c.evidence.map(p=>`<a ${fileA(p)}><img loading="lazy" ${imgSrc(p)} alt="${esc(r.id)} 캡처"></a>`).join('');
+ hydrateImgs(box)}
+// ================= ⑦ log =================
+const TYPES=[['call','호출'],['verdict','판정'],['reject','반려'],['stop','멈춤·상태'],['retry','재시도'],['stage','단계 이동'],['other','기타']];
+let filt=store.get('filters',Object.fromEntries(TYPES.map(([k])=>[k,true])));
+$('filters').innerHTML=TYPES.map(([k,l])=>`<label class="chk"><input type="checkbox" data-k="${k}" ${filt[k]!==false?'checked':''}>${l}</label>`).join('');
+$('filters').querySelectorAll('input').forEach(i=>i.onchange=()=>{filt[i.dataset.k]=i.checked;store.set('filters',filt);LAST&&drawLog(LAST)});
+let logSig='';
+function drawLog(d){const rows=d.log.filter(x=>filt[x.type]!==false);const sig=d.id+'|'+d.log.length+'|'+JSON.stringify(filt)+'|'+(d.log.slice(-1)[0]||{}).t;
+ if(sig===logSig)return;logSig=sig;
+ $('log').innerHTML=rows.slice().reverse().map(x=>`<div class="${x.type}"><span class="t">${esc(x.t.slice(11))}</span>${esc(x.text.replace(/\*\*/g,''))}</div>`).join('')||'<span class="note">없음</span>'}
+// ================= ⑧ runs · campaign =================
+let RUNS=[];
+function drawRuns(){
+ $('runs').innerHTML='<tr><th>run</th><th>상태</th><th>호출</th><th>비용</th><th>캠페인</th></tr>'+RUNS.map(r=>`<tr data-id="${esc(r.id)}" class="${r.id===RUN?'sel':''}"><td>${r.alive?'🟢 ':''}${esc(r.id)}</td>
+  <td><span class="chip ${r.status==='COMPLETE'?'c-ok':r.status==='RUNNING'?(r.alive?'c-run':'c-bad'):r.status==='HELP'?'c-bad':'c-wait'}">${esc(r.status)}</span> <span class="note">${esc(r.stage||'')}</span></td>
+  <td>${r.calls}</td><td>$${(r.cost||0).toFixed(2)}</td><td>${esc(r.campaign?r.campaign+' '+(r.feature||''):'')}</td></tr>`).join('');
+ $('runs').querySelectorAll('tr[data-id]').forEach(tr=>tr.onclick=()=>select(tr.dataset.id));
+ const sel=$('runSel');const opts=RUNS.map(r=>`<option value="${esc(r.id)}" ${r.id===RUN?'selected':''}>${r.alive?'● ':''}${esc(r.id)} · ${esc(r.status)}</option>`).join('');
+ if(sel._o!==opts){sel.innerHTML=opts;sel._o=opts}
+}
+function drawCampaign(d){const c=d.campaign;
+ if(!c){$('camp').innerHTML='<span class="note">이 run은 캠페인 run이 아님</span>';return}
+ $('camp').innerHTML=`<b>${esc(c.name)}</b> · <span class="chip ${c.status==='ACTIVE'?'c-run':c.status==='FINISHED'?'c-ok':'c-wait'}">${esc(c.status)}</span> 기능 ${c.done}/${c.total} · run ${c.runs}개
+  ${c.plan_error?`<div class="err">계획 읽기 실패: ${esc(c.plan_error)}</div>`:''}
+  <div class="bar"><i style="width:${c.total?c.done/c.total*100:0}%"></i></div>
+  <div class="feats">${c.features.map(f=>`<div class="feat ${f.commit?'done':''} ${f.this_run?'me':''}" title="${esc(f.title)}">${f.commit?'✓':'·'} <b>${esc(f.id)}</b>${f.level?' L'+f.level:''} ${f.commit?'<span class="mono">'+esc(f.commit.slice(0,8))+'</span> ':''}${esc(f.title)}</div>`).join('')}</div>
+  <div class="note" style="margin-top:6px">${c.log.map(esc).join('<br>')}</div>`}
+// ================= polling =================
+let RUN=null,LAST=null,busy=false;
+async function getJSON(u){const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw new Error(r.status+' '+u);return r.json()}
+// ---- which run is on screen : follow the running run — a new run takes
+// over the screen by itself. Nothing running -> the newest run. Two running (two projects) -> chips to switch. A run
+// picked from 「지난 run」 stays until 「지금 run으로」. One place decides: pickRun.
+let FOLLOW=true,PIN=null;
+function pickRun(){const alive=RUNS.filter(r=>r.alive);
+ if(PIN&&alive.some(r=>r.id===PIN))return PIN;PIN=null;return (alive[0]||RUNS[0]||{}).id||null}
+function drawFollow(){const alive=RUNS.filter(r=>r.alive);
+ $('liveChips').innerHTML=alive.length>1?' 도는 run '+alive.length+'개: '+alive.map(r=>`<button class="chip ${r.id===RUN?'c-run':''}" data-live="${esc(r.id)}">${esc(r.id.split('/')[1].slice(0,30))}</button>`).join(''):'';
+ $('liveChips').querySelectorAll('[data-live]').forEach(b=>b.onclick=()=>{FOLLOW=true;PIN=b.dataset.live;select(PIN,true)});
+ $('follow').innerHTML=FOLLOW?(alive.length?'● 지금 도는 run 자동 표시':'지금 도는 run 없음 — 가장 최근 run 표시(새 run이 시작되면 자동으로 넘어감)')
+  :'지난 run 보는 중 <button id="backLive">지금 run으로</button>';
+ const b=$('backLive');if(b)b.onclick=()=>{FOLLOW=true;PIN=null;history.replaceState(null,'',location.pathname+location.search);follow()}}
+function follow(){if(FOLLOW){const id=pickRun();if(id&&id!==RUN)select(id,true)}drawFollow()}
+async function loadRuns(){try{RUNS=await SRC.runs();
+  if(!RUN){const q=new URLSearchParams(location.search).get('run')||decodeURIComponent(location.hash.slice(1));if(q&&RUNS.some(r=>r.id===q))select(q)}
+  follow();drawRuns()}catch(e){$('upd').textContent='run 목록 실패: '+e.message}}
+function select(id,auto){if(!auto){FOLLOW=false;PIN=null;history.replaceState(null,'','#'+encodeURIComponent(id))}
+ if(id===RUN){drawFollow();return}RUN=id;LAST=null;prevFlow=null;selCell=null;cellSig='';logSig='';liveKey='';$('detail').className='card';drawRuns();drawFollow();tick()}
+$('pastBtn').onclick=()=>{const show=$('p-runs').hidden;$('p-runs').hidden=!show;$('runSel').hidden=!show;$('pastBtn').textContent=show?'지난 run 숨기기':'지난 run 보기'};
+$('runSel').onchange=e=>select(e.target.value);
+// ↻: forget what was kept to save requests (cloud payload · signed URLs · drawn signatures) and ask again now
+$('reload').onclick=async()=>{CACHE={id:null,at:null,d:null};for(const k in SIGNED)delete SIGNED[k];cellSig='';logSig='';
+ $('upd').textContent='다시 가져오는 중…';await loadRuns();await tick()};
+async function tick(){if(busy||!RUN)return;busy=true;const want=RUN;
+ try{const [d,u]=await Promise.all([SRC.run(want),SRC.usage()]);if(want!==RUN)return;LAST=d;drawUsage(u);
+  for(const fn of [drawStatus,drawKpis,drawNow,drawFlow,drawGantt,drawEvals,drawLog,drawCampaign]){try{fn(d)}catch(err){console.error(fn.name,err)}}
+  $('upd').textContent=CLOUD?'클라우드 · 마지막 업로드 '+new Date(CACHE.at).toTimeString().slice(0,8)+' · 3초마다 확인':'갱신 '+new Date().toTimeString().slice(0,8)+' · 2초마다'}
+ catch(e){$('upd').textContent=(CLOUD?'⚠ 클라우드 응답 없음 — ':'⚠ 서버 응답 없음 — 대시보드 프로세스 확인 ')+'('+e.message+')'}
+ finally{busy=false}}
+function start(){loadRuns().then(tick);setInterval(tick,CLOUD?3000:2000);setInterval(loadRuns,CLOUD?6000:5000)}  // a new run shows within ~6 s
+if(CLOUD)cloudInit().then(ok=>{if(ok)start()}).catch(e=>{$('upd').textContent='⚠ 클라우드 설정 실패: '+e.message});else start();
+</script></body></html>

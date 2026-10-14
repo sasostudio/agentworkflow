@@ -1,0 +1,33 @@
+{
+  "target": "C:/work/my-godot-game",
+  "check_commands": [
+    "powershell -NoProfile -ExecutionPolicy Bypass -File run_tests.ps1"
+  ],
+  "qa": {
+    "runner": "godot",
+    "environment": "isolated",
+    "godot_exe": "C:/tools/godot/Godot_v4.7.2-stable_win64_console.exe",
+    "scenario_timeout_sec": 180
+  },
+  "plan_dir": "docs/plan",
+  "wiki_dir": "docs/wiki",
+  "doc_extensions": [
+    ".md",
+    ".txt"
+  ],
+  "high_risk_paths": [
+    "core/",
+    "project.godot"
+  ],
+  "limits": {
+    "max_check_fails": 3,
+    "max_calls_per_run": 60,
+    "max_eval_rejects": 3
+  },
+  "capabilities": {
+    "web_roles": [],
+    "mcp_servers": [],
+    "mcp_tools": {},
+    "plugins": []
+  }
+}

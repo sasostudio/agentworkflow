@@ -1,0 +1,15 @@
+# Run records, your requests/campaigns and machine state stay out.
+ai-log/
+requests/
+campaigns/
+locks/
+.testtmp/
+.studio.lock*
+# 대시보드 V2: Supabase 키(secret 포함) · 업로더 동기화 기록 · Vercel CLI 연결 정보
+.env.dashboard
+.dashboard-sync/
+.vercel/
+.dashboard-site/
+runners/node_modules/
+__pycache__/
+*.pyc
