@@ -161,6 +161,8 @@ python -m unittest discover -s tests
 - **Do not let the PC sleep while a run is going** — nothing (engine, fallback resume, Master) runs during sleep. Screen lock is fine.
 - The second view and the rebuttal review run one after another, not in parallel.
 - Roblox QA captures: Studio MCP resets the camera after `execute_luau`, so camera-dependent views do not show in captures.
+- External commands (machine check · self-check · QA runners) run through `procutil.run`: at the time limit the whole process tree is ended (Windows `subprocess.run` ends only the direct child and then waits on pipes a grandchild still holds). A process started fully detached from the tree is not caught — its output is then given up after 10 s.
+- The builder's write rules name the target by its absolute path (`./**` would follow the session's cwd after a `cd`). A target path with a comma is refused at config time.
 - Rules make good behaviour much more likely, not certain — only countable things are enforced in code.
 - Code comments refer to internal design notes (`design §N`, `v6 §N`) that are not part of this repo.
 

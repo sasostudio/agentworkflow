@@ -621,7 +621,7 @@ class Engine:
         return self._end_checks()
 
     def _builder_tools(self):
-        allowed = prompts.perms_build()
+        allowed = prompts.perms_build(self.target)
         env, extra = None, ""
         if self.cfg.get("contract_files"):
             extra += prompts.contract_rule(self.cfg["contract_files"])
@@ -633,7 +633,7 @@ class Engine:
             env = {selfcheck.ENV: self._self_check_env()}
         shot = self._dev_shot()
         if shot:
-            allowed += [f"Bash({shot.command_prefix()}:*)", f"Edit({shot.DRAFT_DIR}/**)", f"Write({shot.DRAFT_DIR}/**)"]
+            allowed += [f"Bash({shot.command_prefix()}:*)"] + prompts.write_rules(self.target / shot.DRAFT_DIR)
             extra += shot.rule(self.req.get("references") or [])
             env = {**(env or {}), shot.ENV: self._dev_shot_env(shot)}
         return allowed, env, extra

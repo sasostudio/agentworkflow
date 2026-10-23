@@ -8,6 +8,8 @@ Permission rules: paths without a leading slash are relative to the agent cwd (=
 engine runs builds/tests itself (the self-check command and the dev-shot script are the only Bash rules, engine.py).
 """
 
+from pathlib import Path
+
 from .todo import CONTRACT_MARK
 
 NO_SHELL = ["Bash", "PowerShell", "AskUserQuestion", "WebFetch", "WebSearch", "NotebookEdit", "Agent", "Task"]
@@ -108,9 +110,17 @@ REVIEW_RULES = (
 
 
 # ---------------- permissions ----------------
-def perms_build():
+def write_rules(folder):
+    """Edit+Write pair on one folder, by its ABSOLUTE path: `./**` follows the session's cwd, and a read-only
+    `cd X && ls` moves it — every write to the target was then refused (measured: absolute rules keep the target
+    writable after a cd and refuse X)."""
+    root = Path(folder).resolve().as_posix()
+    return [f"Edit({root}/**)", f"Write({root}/**)"]
+
+
+def perms_build(target):
     """v6 §2: the builder writes anywhere in the target; the engine fences it afterwards (TODO `대상` + wiki_dir)."""
-    return READ_ONLY + ["Edit(./**)", "Write(./**)"]
+    return READ_ONLY + write_rules(target)
 
 
 def skill_paths(rules_root):

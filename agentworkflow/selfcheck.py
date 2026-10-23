@@ -11,7 +11,7 @@ engine.json `self_check`:
   extensions   which files are checked (others are skipped) · timeout_sec per command · max_fixes = how many times the
                engine sends a failing developer back to its own session before the layer check takes over.
 The AI's copy of the config comes through the environment variable AW_SELFCHECK (a JSON file in the run folder).
-Stdlib only: this file also runs as a plain script inside the AI's shell.
+Stdlib only (+ procutil, itself stdlib only): this file also runs as a plain script inside the AI's shell.
 """
 
 import json
@@ -22,6 +22,11 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+
+try:
+    from . import procutil
+except ImportError:  # run as a plain script (the AI's shell): its own folder is on sys.path
+    import procutil
 
 ENV = "AW_SELFCHECK"
 SCRIPT = Path(__file__).resolve().as_posix()
@@ -85,8 +90,8 @@ def run(cfg, files, cwd, tmp_root):
         argv = _argv(tpl, sel, tmp, cwd)
         t0 = time.time()
         try:
-            r = subprocess.run(argv, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8",
-                               errors="replace", timeout=cfg.get("timeout_sec", 120))
+            r = procutil.run(argv, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8",
+                             errors="replace", timeout=cfg.get("timeout_sec", 120))
             code, out = r.returncode, (r.stdout or "") + (r.stderr or "")
         except FileNotFoundError as e:
             code, out = -2, f"명령을 찾지 못함: {e}"

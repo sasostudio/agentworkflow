@@ -6,6 +6,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from . import procutil
+
 
 def run_checks(commands, cwd, timeout_sec, log_path=None):
     """Run each shell command in order; stop at first failure. Returns (ok, summary_text)."""
@@ -14,8 +16,8 @@ def run_checks(commands, cwd, timeout_sec, log_path=None):
     for cmd in commands:
         t0 = time.time()
         try:
-            r = subprocess.run(cmd, cwd=str(cwd), shell=True, capture_output=True, text=True,
-                               encoding="utf-8", errors="replace", timeout=timeout_sec)
+            r = procutil.run(cmd, cwd=str(cwd), shell=True, capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=timeout_sec)
             code, out = r.returncode, (r.stdout or "") + (r.stderr or "")
         except subprocess.TimeoutExpired as e:
             code, out = -1, f"타임아웃 {timeout_sec}s\n{e.stdout or ''}"

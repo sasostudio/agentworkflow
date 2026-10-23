@@ -20,11 +20,10 @@ The runner never starts or restarts `rojo serve` (restarting forces the user to 
 import contextlib
 import json
 import re
-import subprocess
 import time
 from pathlib import Path
 
-from . import gitutil, studio_capture
+from . import gitutil, procutil, studio_capture
 from .qa import enforce_evidence
 from .studio_mcp import StudioClient, StudioError, ToolFailed
 
@@ -109,8 +108,8 @@ def mode(client, sid):
 
 
 def sourcemap_scripts(command, target):
-    r = subprocess.run(command, cwd=str(target), shell=True, capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", timeout=120)
+    r = procutil.run(command, cwd=str(target), shell=True, capture_output=True, text=True, encoding="utf-8",
+                     errors="replace", timeout=120)
     if r.returncode != 0:
         raise Blocked(f"rojo sourcemap 실패(exit {r.returncode}): {(r.stderr or r.stdout)[-300:]}")
     tree = json.loads(r.stdout)

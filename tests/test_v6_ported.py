@@ -403,8 +403,9 @@ class DevShot(unittest.TestCase):
         e, fa, repo, st = roblox_engine()
         allowed, env, extra = e._builder_tools()
         self.assertIn(f"Bash({studio_shot.command_prefix()}:*)", allowed)
-        self.assertIn("Write(.aw-shot/**)", allowed)
-        self.assertIn("Edit(.aw-shot/**)", allowed)       # measured 10-01: Write alone is denied
+        drafts = (repo / ".aw-shot").resolve().as_posix()  # absolute: `./` follows the session's cwd
+        self.assertIn(f"Write({drafts}/**)", allowed)
+        self.assertIn(f"Edit({drafts}/**)", allowed)       # measured 10-01: Write alone is denied
         self.assertIn("## 화면 확인", extra)
         cfgf = json.loads(Path(env[studio_shot.ENV]).read_text(encoding="utf-8"))
         self.assertEqual(cfgf["target"], repo.resolve().as_posix())

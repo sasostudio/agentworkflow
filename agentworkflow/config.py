@@ -198,6 +198,8 @@ def validate(cfg):
     check_removed(cfg)  # DEFAULTS carry none of these keys — any one present came from the caller's config
     if not cfg.get("target"):
         raise ConfigError("target 누락")
+    if "," in str(cfg["target"]):  # the builder's write rule names the target inside the comma-joined --allowedTools
+        raise ConfigError("target 경로에 쉼표(,)를 쓸 수 없다 — 작업자 쓰기 허용 규칙이 쪼개진다")
     qa = cfg["qa"]
     if qa["runner"] not in VALID_RUNNERS:
         raise ConfigError(f"qa.runner 는 {sorted(VALID_RUNNERS)} 중 하나")

@@ -12,6 +12,7 @@ import time
 import urllib.request
 from pathlib import Path
 
+from . import procutil
 from .safety import ENGINE_ROOT
 
 RUNNERS_DIR = ENGINE_ROOT / "runners"
@@ -132,8 +133,8 @@ def run_web(cfg, target, qa_dir, files):
            "--timeout", str(qa["scenario_timeout_sec"])]
 
     def _go():
-        r = subprocess.run(cmd, cwd=str(RUNNERS_DIR), capture_output=True, text=True, encoding="utf-8",
-                           errors="replace", timeout=qa["scenario_timeout_sec"] * max(1, len(files)) + 120)
+        r = procutil.run(cmd, cwd=str(RUNNERS_DIR), capture_output=True, text=True, encoding="utf-8",
+                         errors="replace", timeout=qa["scenario_timeout_sec"] * max(1, len(files)) + 120)
         (qa_dir / "runner.log").write_text((r.stdout or "") + (r.stderr or ""), encoding="utf-8")
         return r
 
@@ -157,8 +158,8 @@ def run_godot(cfg, target, qa_dir, files):
         env = dict(os.environ, AW_EVIDENCE_DIR=str(edir), AW_RESULT_FILE=str(rfile))
         cmd = [qa["godot_exe"], "--path", str(target), "-s", f["path"]]
         try:
-            r = subprocess.run(cmd, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                               timeout=qa["scenario_timeout_sec"])
+            r = procutil.run(cmd, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                             timeout=qa["scenario_timeout_sec"])
             log = (r.stdout or "") + (r.stderr or "")
         except subprocess.TimeoutExpired:
             log = f"타임아웃 {qa['scenario_timeout_sec']}s"
@@ -183,8 +184,8 @@ def run_command(cfg, target, qa_dir, files):
     cmd = qa["command"].format(scenarios=qa_dir / "scenarios", manifest=qa_dir / "scenarios.json",
                                evidence=evidence, results=results_file, target=target,
                                base_url=qa.get("base_url") or "")
-    r = subprocess.run(cmd, cwd=str(target), shell=True, capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", timeout=qa["scenario_timeout_sec"] * max(1, len(files)) + 60)
+    r = procutil.run(cmd, cwd=str(target), shell=True, capture_output=True, text=True, encoding="utf-8",
+                     errors="replace", timeout=qa["scenario_timeout_sec"] * max(1, len(files)) + 60)
     (qa_dir / "runner.log").write_text((r.stdout or "") + (r.stderr or ""), encoding="utf-8")
     return _read_results(results_file, files, evidence)
 
@@ -359,8 +360,8 @@ def precheck(scenarios, cfg, target, max_n=None):
 
 def _parses(command, code, target):
     try:
-        r = subprocess.run(command, cwd=str(target), shell=True, input=code, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=30)
+        r = procutil.run(command, cwd=str(target), shell=True, input=code, capture_output=True, text=True,
+                         encoding="utf-8", errors="replace", timeout=30)
     except subprocess.TimeoutExpired:
         return False, "문법 검사 타임아웃"
     return r.returncode == 0, " ".join(((r.stderr or "") + (r.stdout or "") if r.returncode else "").split())[-300:]
