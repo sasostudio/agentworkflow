@@ -1,8 +1,23 @@
+<div align="center">
+
 # AgentWorkflow
 
-**Claude Code로 길고 무인으로 도는 코딩 작업을 코드가 지휘하는 엔진.** 사람(또는 "Master" 역할의 Claude Code 세션)이 TODO를 쓰면, 엔진이 **작업자**와 **평가자** 에이전트를 만들기 → 평가 → QA → 끝 승인 순서로 돌리고, 사람의 결정이 필요할 때마다 깔끔하게 멈춘다.
+### Claude Code를 몇 시간씩 맡겨 두는 엔진.<br>만든 AI가 자기 작업을 채점하지 않는다.
 
-[English README](README.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/sasostudio/agentworkflow)](https://github.com/sasostudio/agentworkflow/releases)
+![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB)
+![Tests: 258 run, OK](https://img.shields.io/badge/tests-258%20run%20%C2%B7%20OK-2f7d4f)
+![Claude Code](https://img.shields.io/badge/Claude%20Code-CLI-D97757)
+
+길고 무인으로 도는 Claude Code 작업을 코드가 지휘한다. **작업자**가 만들고, 별도의 읽기 전용 **평가자**가 판정하고,<br>새 세션이 그 통과를 반박해 보고, 마지막 승인은 **사람**이 한다. 사람의 결정이 필요할 때마다 깔끔하게 멈춘다.
+
+[설치](#설치) · [실전 기록](#실전-기록) · [누구에게 맞나](#누구에게-맞나) · [`/goal`과 차이](#goal과-차이) · [English](README.md)
+
+<img src="docs/hero.svg" alt="사람이 TODO를 승인하면 작업자가 만들고, 읽기 전용 평가자가 판정해 되돌려 보내기도 하며, 새 세션 반박 검토가 통과를 반박해 보고, 사람이 끝 승인을 한다. 엔진은 파일 울타리·사용량 감시·충돌 복구를 맡는다." width="880">
+
+</div>
 
 > **비공식 도구다.** Anthropic과 관계없고 Anthropic이 보증하지 않는다. 내 PC에서 공식 `claude` CLI를 수정 없이 실행하며, 로그인은 **내** Claude 계정 또는 **내** API 키로 한다.
 > **Windows 전용**(Windows 11 · PowerShell에서 실측). **프롬프트·규칙 파일은 한국어**다.
@@ -32,6 +47,37 @@ EVALUATE ─ 주 평가자(Opus) 한 세션이 판정마다 다음을 정한다:
 | 호출 도중 사용량 한도 | 호출 중에도 계정 사용량을 읽어 5시간 95% · 주간 97%에서 그 호출을 끊음 · `resume`이 같은 세션으로 이어 감 |
 | 엔진 죽음·PC 재시작 | 먼저 쓰는 상태 기록 · 호출 시작 즉시 세션 id 기록 · 죽은 엔진을 다시 띄우는 감시자 · 무엇이든 `resume` |
 | 우회 코드(`any`, 빈 `catch`, `@ts-ignore` …) | diff를 검사해 새 우회 흔적을 평가자에게 넘긴다 |
+
+## 실전 기록
+
+작성자가 자기 프로젝트에서 잰 숫자다. 벤치마크가 아니라 한 사람의 기록으로 봐 달라.
+
+| | |
+|---|---|
+| **Godot 4 게임, 2026-10-06 ~ 10-10** | 15 run 전부 COMPLETE(전투 핵심 · 밸런스 시뮬레이터 · 전투 화면 · 도트 적용 …) · AI 호출 188 · 기록 비용 약 $407(CLI가 보고한 비용 · 비용 미상 호출 제외) |
+| **역할 넷이 아니라 둘인 이유** | 같은 과제를 세 방식으로: 예전 4역할 파이프라인 11호출($1.55), 그 단순화판 14호출($1.91) 뒤 역할 사이 오해로 정지, 작업자 + 평가자 3호출($0.40) 통과 |
+| **실전이 드러낸 결함(수정 완료)** | 긴 호출 하나가 주간 97% 기준을 넘김 — 엔진이 「다음 호출 전」에만 멈췄기 때문 → 이제 호출 도중에 끊는다. 상한 1800초인 기계검사가 9,886초 뒤에 돌아옴 — 손자 프로세스가 파이프를 쥐고 있었기 때문 → 이제 상한에서 프로세스 트리째 종료 |
+
+## 누구에게 맞나
+
+| 잘 맞는 경우 | 다른 걸 쓰는 게 나은 경우 |
+|---|---|
+| Windows + Claude Code로, 사람 없이 몇 시간 도는 작업을 맡기고 싶다 | macOS / Linux — 지원 안 함 |
+| 「완료」를 별도의 읽기 전용 에이전트가 판정하고, 마지막은 사람이 정하길 원한다 | 세션 안에서 「X 될 때까지 계속」 정도면 내장 [`/goal`](https://code.claude.com/docs/en/goal)이 더 간단하다 |
+| 승인한 파일 밖 수정을 코드로 막고 싶다 | 에이전트 여러 개를 칸반에서 병렬로 — 이 엔진은 작업자 하나씩 돈다 |
+| 웹 · Godot · Roblox 프로젝트(QA 러너 포함) | 규칙 파일을 영어로 고쳐 쓰고 싶다 — 들어 있는 규칙은 한국어다 |
+
+## `/goal`과 차이
+
+Claude Code 내장 [`/goal`](https://code.claude.com/docs/en/goal)은 세션 안에서 완료 조건을 걸고, 턴마다 작고 빠른 모델이 그 조건을 확인한다. 내장이고 설정이 필요 없으니 먼저 써 볼 만하다. AgentWorkflow는 세션 **밖**에서 감독받는 프로세스로 돌고, 조건 확인보다 더 많은 걸 원할 때를 위한 것이다.
+
+| | `/goal` (공식 문서 기준) | AgentWorkflow |
+|---|---|---|
+| 「완료」 판정 | 도구를 쓰지 않는 작고 빠른 모델이 대화에 드러난 것만 보고 판정 | 파일을 직접 읽고 QA 시나리오를 쓰는 읽기 전용 평가자(Opus) → 새 세션 반박 검토 → 사람 |
+| 고칠 수 있는 파일 | 조건에 제약을 적을 수 있고, 대화를 보고 판정 | 승인한 TODO의 `대상` 밖 수정은 코드가 자동 반려 |
+| 사용량 한도 | 목표가 일시정지, 리셋되면 이어 갈 수 있음 | 한도 **전에** 95%(5시간) / 97%(7일)에서 호출을 끊고 같은 세션으로 재개 |
+| 죽음 / 재시작 | `--resume`이 목표를 복원(턴 수는 초기화) | 미리 쓰는 상태 기록 · 죽은 엔진을 다시 띄우는 감독자 · `resume` |
+| 설정 | 없음 | clone + Python + 설정 파일 |
 
 ## 품질 규칙 (함께 들어 있음)
 
@@ -143,7 +189,7 @@ python -m agentworkflow campaign …                            # 연속 모드(
 python -m unittest discover -s tests
 ```
 
-253개 · AI 호출 0(가짜 어댑터 · 가짜 Studio). `test_web_runner`만 헤드리스 Chrome을 띄운다. 임시 레포는 `.testtmp/`에 만들고, 테스트 프로세스는 자기 폴더만 지운다.
+258개(1개 건너뜀) · AI 호출 0(가짜 어댑터 · 가짜 Studio). `test_web_runner`만 헤드리스 Chrome을 띄운다. 임시 레포는 `.testtmp/`에 만들고, 테스트 프로세스는 자기 폴더만 지운다.
 
 ## 알려진 한계
 

@@ -1,8 +1,23 @@
+<div align="center">
+
 # AgentWorkflow
 
-**A code-driven engine for long, unattended coding work with Claude Code.** You (or a Claude Code session acting as "Master") write a TODO; the engine drives a **builder** agent and an **evaluator** agent through build → review → QA → final approval, and stops cleanly whenever a human decision is needed.
+### Leave Claude Code working for hours.<br>The builder never grades its own work.
 
-[한국어 README](README.ko.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/sasostudio/agentworkflow)](https://github.com/sasostudio/agentworkflow/releases)
+![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB)
+![Tests: 258 run, OK](https://img.shields.io/badge/tests-258%20run%20%C2%B7%20OK-2f7d4f)
+![Claude Code](https://img.shields.io/badge/Claude%20Code-CLI-D97757)
+
+A code-driven engine for long, unattended Claude Code runs: a **builder** makes the change, a separate read-only **evaluator** judges it,<br>a fresh session tries to refute the pass, and **you** give the final approval. It stops cleanly whenever a human decision is needed.
+
+[Install](#install) · [Real runs](#real-runs) · [Is it for you?](#is-it-for-you) · [vs `/goal`](#how-it-differs-from-goal) · [한국어](README.ko.md)
+
+<img src="docs/hero.svg" alt="You approve the TODO, the builder makes the change, a read-only evaluator judges it and may send it back, a fresh-session rebuttal review tries to refute the pass, and you give the final approval. The engine fences the files, watches usage and survives crashes." width="880">
+
+</div>
 
 > **Unofficial.** Not affiliated with or endorsed by Anthropic. It runs the official, unmodified `claude` CLI on your own machine with **your own** Claude login or API key.
 > **Windows only** (tested on Windows 11 · PowerShell). **Prompts and rule files are in Korean** — the models handle it fine; English rule files may come later.
@@ -33,6 +48,37 @@ Long agent runs fail in boring ways: an agent claims "done" without checking, ed
 | Usage limit hit mid-call | Reads the account's usage windows while a call runs and cuts it at 95 % (5 h) / 97 % (7 d); `resume` continues the same session |
 | Crash / PC restart | Write-ahead state, session ids recorded at call start, a supervisor that restarts a dead engine, `resume` after anything |
 | Workarounds (`any`, empty `catch`, `@ts-ignore` …) | Diff is scanned and new workaround traces are handed to the evaluator |
+
+## Real runs
+
+Author-measured, on the author's own projects — treat these as one person's numbers, not a benchmark.
+
+| | |
+|---|---|
+| **A Godot 4 game, Oct 6–10, 2026** | 15 runs, all COMPLETE (combat core, balance simulator, battle screen, pixel-art pass, …) · 188 AI calls · recorded cost ≈ $407 (the CLI's reported cost; calls whose cost was unknown are excluded) |
+| **Why two agents, not four** | Same task, three setups: the earlier 4-role pipeline took 11 calls ($1.55), a simplified variant of it 14 calls ($1.91) before stalling on hand-off misunderstandings; builder + evaluator took 3 calls ($0.40) and passed |
+| **Defects the runs exposed, now fixed** | A long call crossed the 97 % weekly limit because the engine only stopped "before the next call" → it now cuts mid-call. An 1800 s machine check returned after 9,886 s because a grandchild process held the pipes → time limits now end the whole process tree |
+
+## Is it for you?
+
+| Good fit | Use something else |
+|---|---|
+| Windows + Claude Code, and you want a job to run for hours without you | macOS / Linux — not supported |
+| You want "done" judged by a separate, read-only agent, plus a human final say | A quick in-session "keep going until X" — the built-in [`/goal`](https://code.claude.com/docs/en/goal) is simpler |
+| You want edits fenced to the approved files, enforced in code | Many agents in parallel on a Kanban board — this runs one builder at a time |
+| Web, Godot or Roblox projects (bundled QA runners) | You need English rule files to edit — the bundled rules are in Korean (the models handle them fine) |
+
+## How it differs from `/goal`
+
+Claude Code's built-in [`/goal`](https://code.claude.com/docs/en/goal) sets a completion condition inside your session; after each turn a small fast model checks it. It is built in and needs no setup — start there. AgentWorkflow runs **outside** your session as a supervised process, for when you want more than a condition check:
+
+| | `/goal` (per its docs) | AgentWorkflow |
+|---|---|---|
+| Who judges "done" | a small fast model that calls no tools and judges only what the conversation shows | a read-only evaluator (Opus) that reads the files and writes QA scenarios the engine runs, then a fresh-session rebuttal review, then you |
+| Files it may touch | constraints can go into the condition, judged from the conversation | anything outside the approved TODO's `대상` (target) files is auto-rejected in code |
+| Usage limits | the goal pauses and can resume when the limit resets | the call is cut *before* the limit, at 95 % (5 h) / 97 % (7 d), then resumes the same session |
+| Crash / restart | `--resume` restores the goal (turn count resets) | write-ahead state, a supervisor that restarts a dead engine, `resume` |
+| Setup | none | clone + Python + a config file |
 
 ## Quality rules (bundled)
 
@@ -154,7 +200,7 @@ Optional cloud copy (Supabase + Vercel): `supabase/dashboard_schema.sql` (**edit
 python -m unittest discover -s tests
 ```
 
-253 tests, no AI calls (fake adapter, fake Studio). Only `test_web_runner` launches headless Chrome. Temp repos go to `.testtmp/` and each test process removes only its own folder.
+258 tests (1 skipped), no AI calls (fake adapter, fake Studio). Only `test_web_runner` launches headless Chrome. Temp repos go to `.testtmp/` and each test process removes only its own folder.
 
 ## Known limitations
 
